@@ -4,6 +4,12 @@ import os
 from flask import Flask
 import threading
 
+import discord
+from discord.ext import commands
+import os
+from flask import Flask
+import threading
+
 app = Flask(__name__)
 @app.route('/')
 def home():
@@ -24,9 +30,10 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
+    if member.bot:
+        return
     guild = member.guild
     
-    # On récupère les vrais salons pour pouvoir les taguer
     def get_channel(nom_partiel):
         for ch in guild.text_channels:
             if nom_partiel in ch.name:
@@ -40,7 +47,6 @@ async def on_member_join(member):
     ch_questions = get_channel("questions")
     ch_examens = get_channel("examens")
 
-    # Textes avec tags cliquables
     def mention(ch):
         return ch.mention if ch else f"#{ch.name if ch else 'salon'}"
 
@@ -51,19 +57,24 @@ async def on_member_join(member):
     txt_questions = mention(ch_questions) if ch_questions else "#questions-et-reponses"
     txt_examens = mention(ch_examens) if ch_examens else "#examens-blancs"
 
-    # Création catégorie privée
     cat_name = "👋 BIENVENUE ELEVES"
     category = discord.utils.get(guild.categories, name=cat_name)
     if not category:
         category = await guild.create_category(cat_name)
 
+    # On vérifie si il a déjà son salon privé (avec son ID)
+    for ch in guild.text_channels:
+        if str(member.id) in ch.name:
+            return
+
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
         member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        guild.me: discord.PermissionOverwrite(read_messages=True)
+        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
 
-    channel = await guild.create_text_channel(f"prive-{member.name}", overwrites=overwrites, category=category)
+    # On met l'ID dans le nom pour être sûr que c'est unique
+    channel = await guild.create_text_channel(f"prive-{member.name}-{member.id}", overwrites=overwrites, category=category)
 
     message = f"""
 Salut {member.mention} 👋 Bienvenue dans l'agence !
@@ -99,22 +110,7 @@ Reste actif et on va t'avoir ton permis ensemble ! 🚗💨
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def setup(ctx):
-    guild = ctx.guild
-    await ctx.send("🚀 Création du serveur...")
-    cat1 = await guild.create_category("ACCUEIL")
-    await guild.create_text_channel("📖・bienvenue", category=cat1)
-    await guild.create_text_channel("📋・règlement", category=cat1)
-    await guild.create_text_channel("📢・annonces", category=cat1)
-    cat2 = await guild.create_category("📚 COURS THÉORIQUES")
-    await guild.create_text_channel("📄・code-de-la-route", category=cat2)
-    await guild.create_text_channel("🚸・panneaux-de-signalisation", category=cat2)
-    await guild.create_text_channel("🚗・règles-de-conduite", category=cat2)
-    cat3 = await guild.create_category("📝 EXERCICES ET ÉVALUATIONS")
-    await guild.create_text_channel("❓・questions-et-réponses", category=cat3)
-    await guild.create_text_channel("📝・examens-blancs", category=cat3)
-    cat4 = await guild.create_category("🎙️ COURS EN DIRECT")
-    await guild.create_voice_channel("🛰️ Salle de cours 1", category=cat4)
-    await guild.create_category("👋 BIENVENUE ELEVES")
-    await ctx.send("✅ Serveur créé ! Maintenant les tags sont cliquables.")
+    # Ne tape plus cette commande, ton serveur est déjà créé !
+    await ctx.send("⚠️ Ton serveur est déjà créé, plus besoin de faire !setup")
 
 bot.run(os.environ.get("TOKEN"))
