@@ -4,16 +4,9 @@ import os
 from flask import Flask
 import threading
 
-import discord
-from discord.ext import commands
-import os
-from flask import Flask
-import threading
-
 app = Flask(__name__)
 @app.route('/')
-def home():
-    return "Bot Auto-Ecole en ligne!"
+def home(): return "Bot Auto-Ecole en ligne!"
 def run_web():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
@@ -30,14 +23,12 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    if member.bot:
-        return
+    if member.bot: return
     guild = member.guild
     
     def get_channel(nom_partiel):
         for ch in guild.text_channels:
-            if nom_partiel in ch.name:
-                return ch
+            if nom_partiel in ch.name: return ch
         return None
 
     ch_bienvenue = get_channel("bienvenue")
@@ -47,8 +38,7 @@ async def on_member_join(member):
     ch_questions = get_channel("questions")
     ch_examens = get_channel("examens")
 
-    def mention(ch):
-        return ch.mention if ch else f"#{ch.name if ch else 'salon'}"
+    def mention(ch): return ch.mention if ch else f"#salon"
 
     txt_bienvenue = mention(ch_bienvenue) if ch_bienvenue else "#bienvenue"
     txt_reglement = mention(ch_reglement) if ch_reglement else "#reglement"
@@ -57,15 +47,13 @@ async def on_member_join(member):
     txt_questions = mention(ch_questions) if ch_questions else "#questions-et-reponses"
     txt_examens = mention(ch_examens) if ch_examens else "#examens-blancs"
 
-    cat_name = "👋 BIENVENUE ELEVES"
-    category = discord.utils.get(guild.categories, name=cat_name)
+    category = discord.utils.get(guild.categories, name="👋 BIENVENUE ELEVES")
     if not category:
-        category = await guild.create_category(cat_name)
+        category = await guild.create_category("👋 BIENVENUE ELEVES")
 
-    # On vérifie si il a déjà son salon privé (avec son ID)
+    # Evite les doublons
     for ch in guild.text_channels:
-        if str(member.id) in ch.name:
-            return
+        if str(member.id) in ch.name: return
 
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(read_messages=False),
@@ -73,7 +61,6 @@ async def on_member_join(member):
         guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
     }
 
-    # On met l'ID dans le nom pour être sûr que c'est unique
     channel = await guild.create_text_channel(f"prive-{member.name}-{member.id}", overwrites=overwrites, category=category)
 
     message = f"""
@@ -109,8 +96,24 @@ Reste actif et on va t'avoir ton permis ensemble ! 🚗💨
 
 @bot.command()
 @commands.has_permissions(administrator=True)
-async def setup(ctx):
-    # Ne tape plus cette commande, ton serveur est déjà créé !
-    await ctx.send("⚠️ Ton serveur est déjà créé, plus besoin de faire !setup")
+async def drive(ctx):
+    guild = ctx.guild
+    cat_name = "🔒 DRIVE - PRIVE"
+    category = discord.utils.get(guild.categories, name=cat_name)
+    if not category:
+        overwrites_cat = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            guild.owner: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
+        category = await guild.create_category(cat_name, overwrites=overwrites_cat)
+
+    for i in range(1, 4):
+        nom_salon = f"drive-{i}"
+        if discord.utils.get(guild.text_channels, name=nom_salon):
+            continue
+        await guild.create_text_channel(nom_salon, category=category)
+    
+    await ctx.send(f"✅ Boss, les 3 drives sont créés dans `{cat_name}`. Seulement TOI peux les voir. Tout le reste continue de marcher normalement.")
 
 bot.run(os.environ.get("TOKEN"))
