@@ -17,83 +17,101 @@ intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ========== TES 5 SUJETS ==========
+QUESTIONS = {
+    1: [
+        {"q": "Ce panneau STOP signifie quoi?", "options": ["Stop obligatoire", "Cédez le passage", "Interdit", "Fin de route"], "correct": 0, "explication": "STOP = arrêt total obligatoire, même si y'a personne."},
+        {"q": "Panneau triangle avec!?", "options": ["Danger général", "Travaux", "École", "Virage"], "correct": 0, "explication": "C'est danger général, tu ralentis."},
+    ],
+    2: [
+        {"q": "Sans panneau au carrefour, qui passe?", "options": ["Moi", "À droite", "À gauche", "Le plus rapide"], "correct": 1, "explication": "Sans panneau = priorité à droite au Bénin et en France."},
+        {"q": "Feu orange tu fais quoi?", "options": ["J'accélère", "Je m'arrête si possible", "Je klaxonne", "Je recule"], "correct": 1, "explication": "Orange = tu t'arrêtes sauf si tu es déjà engagé."},
+    ],
+    3: [],
+    4: [],
+    5: [],
+}
+
+# ========== LOGIQUE EXAMEN ==========
+class QuestionView(discord.ui.View):
+    def __init__(self, user, num_sujet, index, score):
+        super().__init__(timeout=120)
+        self.user = user
+        self.num_sujet = num_sujet
+        self.index = index
+        self.score = score
+        q_data = QUESTIONS[num_sujet][index]
+        for i, opt in enumerate(q_data["options"]):
+            self.add_item(QuestionButton(label=opt[:80], custom_id=str(i), correct=(i==q_data["correct"])))
+
+class QuestionButton(discord.ui.Button):
+    def __init__(self, label, custom_id, correct):
+        super().__init__(label=label, style=discord.ButtonStyle.primary, custom_id=custom_id)
+        self.correct = correct
+    async def callback(self, interaction):
+        view: QuestionView = self.view
+        if interaction.user.id!= view.user.id:
+            await interaction.response.send_message("Ce n'est pas ton examen!", ephemeral=True)
+            return
+        q_data = QUESTIONS[view.num_sujet][view.index]
+        nouveau_score = view.score + (1 if self.correct else 0)
+
+        if self.correct:
+            embed = discord.Embed(title="✅ VRAI!", description=f"Bien joué!\n\n**Explication:** {q_data['explication']}", color=0x00ff00)
+        else:
+            bonne = q_data["options"][q_data["correct"]]
+            embed = discord.Embed(title="❌ FAUX", description=f"Mauvaise réponse. Bonne réponse: **{bonne}**\n\n**Explication:** {q_data['explication']}", color=0xff0000)
+
+        next_index = view.index + 1
+        if next_index < len(QUESTIONS[view.num_sujet]):
+            embed.set_footer(text=f"Score: {nouveau_score}/{next_index} | Question {next_index+1}")
+            next_view = QuestionView(view.user, view.num_sujet, next_index, nouveau_score)
+            q_suivante = QUESTIONS[view.num_sujet][next_index]["q"]
+            embed_next = discord.Embed(title=f"Sujet {view.num_sujet} - Question {next_index+1}/{len(QUESTIONS[view.num_sujet])}", description=q_suivante, color=0xf1c40f)
+            # On combine explication + prochaine question
+            await interaction.response.edit_message(embed=embed, view=None)
+            await interaction.followup.send(embed=embed_next, view=next_view, ephemeral=True)
+        else:
+            embed_fin = discord.Embed(title=f"🏁 Fin Sujet {view.num_sujet}", description=f"Score final: **{nouveau_score}/{len(QUESTIONS[view.num_sujet])}**\n\nRetapes!examen pour refaire.", color=0x3498db)
+            await interaction.response.edit_message(embed=embed_fin, view=None)
+
+class SujetModal(discord.ui.Modal, title="Choisis ton sujet"):
+    numero = discord.ui.TextInput(label="Numéro du sujet (1 à 5)", placeholder="Ex: tape 2 pour Sujet 2", min_length=1, max_length=1)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            num = int(self.numero.value)
+        except:
+            await interaction.response.send_message("❌ Tape juste un chiffre entre 1 et 5", ephemeral=True)
+            return
+
+        if num not in QUESTIONS or len(QUESTIONS[num]) == 0:
+            await interaction.response.send_message(f"❌ Le sujet {num} est vide ou n'existe pas. Tape 1 ou 2 pour l'instant.", ephemeral=True)
+            return
+
+        q_data = QUESTIONS[num][0]
+        embed = discord.Embed(title=f"Sujet {num} - Question 1/{len(QUESTIONS[num])}", description=q_data["q"], color=0xf1c40f)
+        view = QuestionView(interaction.user, num, 0, 0)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+class ExamenStartView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    @discord.ui.button(label="📝 EXAMEN", style=discord.ButtonStyle.primary, custom_id="start_exam_final")
+    async def start(self, interaction, button):
+        await interaction.response.send_modal(SujetModal())
+
 @bot.event
 async def on_ready():
-    print(f"✅ Bot en ligne: {bot.user}")
+    print(f"Bot en ligne: {bot.user}")
 
-@bot.event
-async def on_member_join(member):
-    if member.bot: return
-    guild = member.guild
-    
-    def get_channel(nom_partiel):
-        for ch in guild.text_channels:
-            if nom_partiel in ch.name: return ch
-        return None
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def examen(ctx):
+    embed = discord.Embed(title="🚗 EXAMEN CODE", description="Clique sur 📝 EXAMEN et tape le numéro du sujet que tu veux (1 à 5).\n\n**Sujet 1 = Panneaux\nSujet 2 = Priorités** etc...", color=0x2ecc71)
+    await ctx.send(embed=embed, view=ExamenStartView())
 
-    ch_bienvenue = get_channel("bienvenue")
-    ch_reglement = get_channel("règlement")
-    ch_code = get_channel("code-de-la-route")
-    ch_panneaux = get_channel("panneaux")
-    ch_questions = get_channel("questions")
-    ch_examens = get_channel("examens")
-
-    def mention(ch): return ch.mention if ch else f"#salon"
-
-    txt_bienvenue = mention(ch_bienvenue) if ch_bienvenue else "#bienvenue"
-    txt_reglement = mention(ch_reglement) if ch_reglement else "#reglement"
-    txt_code = mention(ch_code) if ch_code else "#code-de-la-route"
-    txt_panneaux = mention(ch_panneaux) if ch_panneaux else "#panneaux"
-    txt_questions = mention(ch_questions) if ch_questions else "#questions-et-reponses"
-    txt_examens = mention(ch_examens) if ch_examens else "#examens-blancs"
-
-    category = discord.utils.get(guild.categories, name="👋 BIENVENUE ELEVES")
-    if not category:
-        category = await guild.create_category("👋 BIENVENUE ELEVES")
-
-    # Evite les doublons
-    for ch in guild.text_channels:
-        if str(member.id) in ch.name: return
-
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(read_messages=False),
-        member: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-    }
-
-    channel = await guild.create_text_channel(f"prive-{member.name}-{member.id}", overwrites=overwrites, category=category)
-
-    message = f"""
-Salut {member.mention} 👋 Bienvenue dans l'agence !
-
-Ici le but c'est simple : **on va t'aider à apprendre à conduire et à respecter les règles.**
-
-Je t'ai fait simple, clique directement sur les salons pour y aller :
-
-**Pour commencer :**
-👉 {txt_bienvenue} - Présentation de l'agence
-👉 {txt_reglement} - Lis bien les règles
-
-**Pour apprendre :**
-📚 {txt_code} - Le code de la route
-🚸 {txt_panneaux} - Les panneaux
-❓ {txt_questions} - Pose tes questions ici
-📝 {txt_examens} - Entraîne-toi pour l'examen
-
-Prends le temps de tout lire.
-
-Et écoute, dès que t'as ton permis... là c'est toi le boss 😎
-Tu vas faire le show, sortir avec tes potes, conduire où tu veux, même rester tranquille avec les filles dans la voiture... 😏
-Mais pas trop de bêtises hein !
-
-Reste actif et on va t'avoir ton permis ensemble ! 🚗💨
-"""
-    await channel.send(message)
-    try:
-        await member.send(message)
-    except:
-        pass
-
+# Garde ta commande!drive que tu as déjà
 @bot.command()
 @commands.has_permissions(administrator=True)
 async def drive(ctx):
@@ -101,19 +119,10 @@ async def drive(ctx):
     cat_name = "🔒 DRIVE - PRIVE"
     category = discord.utils.get(guild.categories, name=cat_name)
     if not category:
-        overwrites_cat = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            guild.owner: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
+        overwrites_cat = {guild.default_role: discord.PermissionOverwrite(read_messages=False), guild.owner: discord.PermissionOverwrite(read_messages=True, send_messages=True), guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)}
         category = await guild.create_category(cat_name, overwrites=overwrites_cat)
-
     for i in range(1, 4):
-        nom_salon = f"drive-{i}"
-        if discord.utils.get(guild.text_channels, name=nom_salon):
-            continue
-        await guild.create_text_channel(nom_salon, category=category)
-    
-    await ctx.send(f"✅ Boss, les 3 drives sont créés dans `{cat_name}`. Seulement TOI peux les voir. Tout le reste continue de marcher normalement.")
+        if not discord.utils.get(guild.text_channels, name=f"drive-{i}"): await guild.create_text_channel(f"drive-{i}", category=category)
+    await ctx.send(f"✅ Drives OK")
 
 bot.run(os.environ.get("TOKEN"))
